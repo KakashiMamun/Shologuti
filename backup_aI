@@ -1,0 +1,386 @@
+/*
+ * To change this template, choose Tools | Templates
+ * and open the template in the editor.
+ */
+package SixteenChips;
+
+
+/**
+ *
+ * @author Mamun
+ */
+public final class AI {
+
+    public boolean mode;
+    public Status type;
+    public Court c;
+    public Node[] nodes = new Node[37];
+    public static AiNode[] ainodes = new AiNode[16];
+    public static Node[] tempBuffer = new Node[8];
+    public static int humanNewMove;
+    public static Status aiPlayer = Status.PropertiesOfPlayer2;
+    public static int aiplayerChips;
+    public static int tempVar;
+    public static Queue movesBuffer =  new Queue(Court.NULL);
+    public static AiNode nodeToMove;
+
+    public AI(Court c)
+    {
+
+        this.mode = true;
+        this.c = c;
+
+        for(int i=0;i<37;i++)
+            this.nodes[i] = c.nodes[i];
+
+        findAIPlayerNode();
+
+    }
+
+    private void flushAINodes()
+    {
+        for(int i=0;i<AI.aiplayerChips;i++)
+            AI.ainodes[i] = null;
+
+    }
+
+    private AiNode getAiNode(Node a)
+    {
+        for(int i=0;i<16 && AI.ainodes[i] != null;i++)
+            if(AI.ainodes[i].node == a)
+                return AI.ainodes[i];
+        return null;
+    }
+
+    public static void flushTempBuffer()
+    {
+
+        for(int i=0;i<8;i++)
+            tempBuffer[i] = null;
+    }
+
+    public void findAIPlayerNode()
+    {
+        flushAINodes();
+        for(int i=0,j=0;i<37;i++)
+        {
+            if(this.nodes[i].status == AI.aiPlayer)
+            {
+                AI.ainodes[j++] =new AiNode(this.nodes[i]);
+            }
+            AI.aiplayerChips = j;
+        }
+        //for(int i=0;i<AI.aiplayerChips ;i++)
+                //System.out.println(""+ainodes[i].n.no);
+    }
+
+
+
+
+
+    public void AILogics(int n)
+    {
+        findAIPlayerNode();
+        AI.humanNewMove = n;
+        AI.flushTempBuffer();
+        setVulnarableValue();
+        setMoveValues();
+        calculatePriority();
+    }
+
+
+
+    //for vul value
+    private void canBeMoreVulnarable(Node a)
+    {
+        for(int i=0;i<8 && a.Next[i] != null;i++)
+        {
+            if(a.Next[i].status == AI.aiPlayer)
+            {
+                Node n = findInLineNextNextFreeNode(a,a.Next[i]);
+                if( n != null)
+                {
+                    AI.tempVar++;
+                    canBeMoreVulnarable(n);
+                }
+            }
+        }
+    }
+
+    //For calculating vulnaribility
+    private void setVulnarableValue(){
+        for(int i=0;i<8 && this.nodes[AI.humanNewMove].Next[i] != null;i++){
+            if(this.nodes[AI.humanNewMove].Next[i].status == AI.aiPlayer){
+                AI.tempVar = 0;
+                Node n = findInLineNextNextFreeNode(this.nodes[AI.humanNewMove],this.nodes[AI.humanNewMove].Next[i]);
+                if(n != null){
+                    AI.tempVar++;
+                    canBeMoreVulnarable(n);
+                }
+                AiNode a = getAiNode(this.nodes[AI.humanNewMove].Next[i]);
+                if(a!=null){
+                    a.vulnarable_value = AI.tempVar;
+                }
+            }
+        }
+        AI.tempVar = 0;
+    }
+
+
+    //for checking if the chip can be moved to that n
+    private boolean canBeMoved(Node a,Node For)
+    {
+        for(int i=0;i<8 && a.Next[i] != null; i++)
+        {
+            if(a.Next[i].status != Status.NoValue && a.Next[i].status != AI.aiPlayer)
+            {
+                Node n = findInLineNextNextNode(a.Next[i],a);
+                if(n != null)
+                {
+                   if(n.status == Status.NoValue || n == For)
+                   {
+                       //System.out.print(n.no+ " ");
+                    return false;
+                   }
+                }
+            }
+        }
+        return true;
+    }
+
+
+
+    //for killer value
+    private void increaseKillNumber(Node a)
+    {
+        for(int i=0;i<8 && a.Next[i] != null; i++)
+        {
+            if(a.Next[i].status != AI.aiPlayer && a.Next[i].status != Status.NoValue)
+            {
+                Node n = findInLineNextNextFreeNode(a,a.Next[i]);
+                if(n != null)
+                {
+                    AI.tempVar++;
+                    increaseKillNumber(n);
+                }
+            }
+        }
+    }
+
+    //for kill value
+    private int countKillValue(Node a,Node b)
+    {
+        AI.tempVar = 0;
+        Node n = findInLineNextNextNode(a,b);
+        if(n!=null)
+        {
+            AI.tempVar++;
+            increaseKillNumber(n);
+        }
+        return AI.tempVar;
+    }
+
+
+    private void decreaseVulnaribilityNumber(Node a)
+    {
+        for(int i=0;i<8 && a.Next[i] != null;i++)
+        {
+            if(a.Next[i].status == AI.aiPlayer)
+            {
+                Node n =  findInLineNextNextFreeNode(a,a.Next[i]);
+                if(n!=null)
+                {
+                    AI.tempVar++;
+                    decreaseVulnaribilityNumber(n);
+                }
+            }
+        }
+    }
+
+    //for killer number that will cause if it is moved
+    private int setMovedKillNumber(Node a,Node b)
+    {
+        AI.tempVar = 0;
+        Node n = findInLineNextNextNode(a,b);
+        if(n!=null)
+        {
+           if(n.status != AI.aiPlayer && n.status != Status.NoValue)
+           {
+              AI.tempVar++;
+              decreaseVulnaribilityNumber(a);
+           }
+        }
+        return AI.tempVar;
+    }
+
+
+    private void setMoveValues()
+    {
+        for(int i=0;i<16 && AI.ainodes[i] != null; i++ )
+        {
+            AI.ainodes[i].move_value = 0;
+            for(int j=0;j<8 && AI.ainodes[i].node.Next[j] != null; j++)
+            {
+                if(AI.ainodes[i].node.Next[j].status == Status.NoValue)
+                {
+                    if(canBeMoved(AI.ainodes[i].node.Next[j],AI.ainodes[i].node) == true)
+                    {
+                        AI.ainodes[i].move_value++;
+                    }
+                }
+                else if(AI.ainodes[i].node.Next[j].status == AI.aiPlayer)
+                {
+                    AI.ainodes[i].dntMoveValue = setMovedKillNumber(AI.ainodes[i].node,AI.ainodes[i].node.Next[j]);
+                }
+                else
+                {
+                    AI.ainodes[i].killer_value = countKillValue(AI.ainodes[i].node,AI.ainodes[i].node.Next[j]);
+                }
+            }
+        }
+
+    }
+
+
+    public void calculatePriority()
+    {
+        for(int i=0;i<16 && AI.ainodes[i] != null;i++)
+        {
+            AI.ainodes[i].priorityValue += 5*AI.ainodes[i].vulnarable_value + 2* AI.ainodes[i].move_value
+                    +5*AI.ainodes[i].killer_value - 5*AI.ainodes[i].dntMoveValue;
+            System.out.println(AI.ainodes[i].node.no +
+                    " DntMove:"+AI.ainodes[i].dntMoveValue+
+                    " Kill:"+AI.ainodes[i].killer_value +
+                    " Move:"+AI.ainodes[i].move_value+
+                    " VuL:"+AI.ainodes[i].vulnarable_value
+                    );
+            System.out.println(AI.ainodes[i].node.no + " has "+AI.ainodes[i].priorityValue+" move value.");
+        }
+    }
+
+
+     public boolean inNext(int a, int b)
+    {
+        for(int i=0;i<this.nodes[a].Next.length && this.nodes[a].Next[i] != null;i++)
+        {
+            if(this.nodes[b] == this.nodes[a].Next[i])
+                return true;
+        }
+        return false;
+    }
+
+
+   //checks if No a and No b nodes are in the same line
+    public boolean inLine(int a, int b)
+    {
+        for(int i=0;i<this.nodes[b].inline.length && this.nodes[b].inline[i] != null;i++)
+        {
+            for(int j=0;j<this.nodes[a].inline.length && this.nodes[a].inline[j] != null;j++)
+            {
+                if(this.nodes[b].inline[i] == this.nodes[a].inline[j])
+                    return true;//this.nodes[a].inline[i];
+            }
+        }
+    return false;
+    }
+
+    //Checks if the inLine is one of the intersecting Line of Node a
+    public boolean isInTheLine(Node a, Line inline)
+    {
+        for(int i=0;i<a.inline.length && a.inline[i] != null;i++)
+        {
+                if(a.inline[i] == inline)
+                    return true;
+        }
+    return false;
+    }
+
+    //Checks if Nodes are in the same Line or not.. if yes return Line ref. else null
+    public Line findCommonLine(Node a, Node b)
+            {
+        for(int i=0;i<a.inline.length && a.inline[i] != null;i++)
+        {
+            for(int j=0;j<b.inline.length && b.inline[j] != null;j++)
+            {
+                if(a.inline[i] == b.inline[j])
+                    return a.inline[i];
+            }
+        }
+    return null;
+    }
+
+
+    //return ref of the Node which is inLine with a,and b and next to b which is next of a and has No Chips on it
+    public Node findInLineNextNextNode(Node a, Node b)
+    {
+        Line L = this.findCommonLine(a,b);
+        if(L != null)
+        {
+            for(int i=0;i<b.Next.length && b.Next[i] != null; i++)
+            {
+               if(this.isInTheLine(b.Next[i],L) == true && b.Next[i] !=a)
+                     return b.Next[i];
+            }
+        }
+        return null;
+    }
+
+
+   //return ref of the Node which is inLine with a,and b and next to b which is next of a and has No Chips on it
+    public Node findInLineNextNextFreeNode(Node a, Node b)
+    {
+        Line L = this.findCommonLine(a,b);
+        if(L != null)
+        {
+            for(int i=0;i<b.Next.length && b.Next[i] != null; i++)
+            {
+               if(this.isInTheLine(b.Next[i],L) == true &&
+                       b.Next[i] != a && b.Next[i].status == Status.NoValue)
+                     return b.Next[i];
+            }
+        }
+        return null;
+    }
+
+
+    //Finds the common n which is In line with a and b and next of both a,b
+    public Node commonNode(Node a, Node b)
+    {
+        Line L = findCommonLine(a,b);
+
+        for(int i=0;i<a.Next.length && a.Next[i] != null; i++)
+            for(int j=0;j<b.Next.length && b.Next[j] !=null;j++)
+                if(a.Next[i] == b.Next[j] && isInTheLine(b.Next[j],L) && isInTheLine(a.Next[i],L))
+                    return a.Next[i];
+        return null;
+    }
+
+
+}
+
+class AiNode
+{
+    public Node node;
+    public int vulnarable_value;
+    public int killer_value;
+    public int move_value;
+    public int dntMoveValue;
+    public int priorityValue;
+
+
+
+
+    public AiNode()
+    {
+        this.node = null;
+        this.killer_value = this.move_value = this.priorityValue = this.vulnarable_value = 0;
+    }
+    public AiNode(Node a)
+    {
+        this.node = a;
+        this.vulnarable_value = this.killer_value = this.move_value = 0;
+    }
+
+
+
+}
